@@ -6,6 +6,8 @@ stakeholders:
   - "[[John Freeman]]"
   - Monica Dorado
 date created: 2024-11-27
+layout: default
+title: My Website
 ---
     
 ## New Mic (microbially influenced corrosion) Testing Brainstorming
