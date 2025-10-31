@@ -3,6 +3,7 @@ Option Explicit
 Sub ExportToMarkdown()
     Dim ws As Worksheet
     Dim vaultPath As String
+    Dim fileText As String
     Dim mdFile As String
     Dim fso As Object
     Dim yaml As String, noteText As String, tableText As String
@@ -12,7 +13,7 @@ Sub ExportToMarkdown()
     Dim i As Long, j As Long, c As Long
     Dim rowText As String
     Dim foundCell As Range, scopeStart As Long
-    Dim totalPrice As String
+    Dim totalValue As Variant
 
     '=== CONFIGURATION ===
     vaultPath = "C:\Users\CraigMoravec\Obsidian Sync Cloud\001-Work\PZ-Quote Tracker\"  'change if needed
@@ -28,86 +29,58 @@ Sub ExportToMarkdown()
     ' 1?? YAML HEADER (Left Section)
     '---------------------------------------------
     yaml = "---" & vbCrLf
-    For i = 1 To 15
-        key = Trim(Replace(ws.Cells(i, 1).Value, ":", ""))
-        val = Trim(ws.Cells(i, 2).Value)
+    yaml = yaml & "Date: """ & Format(Date, "yyyy-MM-dd") & """" & vbCrLf
+    yaml = yaml & "Status: [Submitted]" & vbCrLf
+
+    ' Loop only through rows 1–9 to skip Notes
+    For i = 1 To 9
+        key = Trim(Replace(ws.Cells(i, 1).value, ":", ""))
+        val = Trim(ws.Cells(i, 2).value)
         If key <> "" And val <> "" Then
-            If LCase(key) <> "column1" And LCase(key) <> "column2" Then
+            ' Skip unwanted fields
+            If LCase(key) <> "column1" And LCase(key) <> "column2" _
+                And LCase(key) <> "notes" And LCase(key) <> "today's date" Then
                 val = """" & Replace(val, """", "'") & """"
                 yaml = yaml & key & ": " & val & vbCrLf
-                If LCase(key) Like "*property*" Then propName = Replace(ws.Cells(i, 2).Value, ":", "")
-                If LCase(key) Like "*quote*" Then quoteNum = Replace(ws.Cells(i, 2).Value, ":", "")
+                If LCase(key) Like "*property*" Then propName = Replace(ws.Cells(i, 2).value, ":", "")
+                If LCase(key) Like "*quote*" Then quoteNum = Replace(ws.Cells(i, 2).value, ":", "")
             End If
         End If
     Next i
 
-  '---------------------------------------------
-' 2?? ADD RIGHT PANEL (D2:D5 ? F2:F5)
-'---------------------------------------------
-Dim rightKeys As Variant, rightVals As Variant
-rightKeys = ws.Range("D2:D5").Value
-rightVals = ws.Range("F2:F5").Value
+    '---------------------------------------------
+    ' 2?? ADD RIGHT PANEL (D2:D5 ? F2:F5)
+    '---------------------------------------------
+    Dim rightKeys As Variant, rightVals As Variant
+    rightKeys = ws.Range("D2:D5").value
+    rightVals = ws.Range("F2:F5").value
 
-For i = 1 To UBound(rightKeys, 1)
-    If Trim(rightKeys(i, 1)) <> "" And Trim(rightVals(i, 1)) <> "" Then
-        Dim k As String, v As String
-        k = Replace(Trim(rightKeys(i, 1)), ":", "")
-        v = Trim(rightVals(i, 1))
-        
-        ' Special case: Hours Quoted should be a number, not currency
-        If LCase(k) Like "*hours*" Then
-            If IsNumeric(v) Then v = CInt(v)
-        ' Format numeric or dollar values as currency
-        ElseIf IsNumeric(Replace(v, "$", "")) Then
-            v = Format(CDbl(Replace(v, "$", "")), "$#,##0.00")
+    For i = 1 To UBound(rightKeys, 1)
+        If Trim(rightKeys(i, 1)) <> "" And Trim(rightVals(i, 1)) <> "" Then
+            Dim k As String, v As String
+            k = Replace(Trim(rightKeys(i, 1)), ":", "")
+            v = Trim(rightVals(i, 1))
+
+            ' Skip Primary Contact and Email duplicates if already handled above
+            If LCase(k) <> "primary contact" And LCase(k) <> "email" Then
+                If LCase(k) Like "*hours*" Then
+                    If IsNumeric(v) Then v = CInt(v)
+                ElseIf IsNumeric(Replace(v, "$", "")) Then
+                    v = Format(CDbl(Replace(v, "$", "")), "$#,##0.00")
+                End If
+                yaml = yaml & k & ": """ & v & """" & vbCrLf
+            End If
         End If
-        
-        yaml = yaml & k & ": """ & v & """" & vbCrLf
-    End If
-Next i
+    Next i
 
-
-'---------------------------------------------
-' 3?? FIND & ADD TOTAL PRICE (robust search for formula-driven cells)
-'---------------------------------------------
-Dim totalCell As Range
-Dim totalLabel As String
-Dim totalValue As Variant
-Dim cell As Range   ' required for loop
-
-' Ensure all formulas are up to date
-Application.Calculate
-
-' Search for any cell that contains both "Total" and "Price" (case-insensitive)
-For Each cell In ws.UsedRange
-    If VarType(cell.Value) = vbString Then
-        totalLabel = LCase(Replace(cell.Value, Chr(160), " ")) ' Replace non-breaking spaces
-        If InStr(totalLabel, "total") > 0 And InStr(totalLabel, "price") > 0 Then
-            Set totalCell = cell
-            Exit For
-        End If
-    End If
-Next cell
-
-' If found, get the value from the next column or one more if merged
-If Not totalCell Is Nothing Then
-    totalValue = totalCell.Offset(0, 1).Value
-    If IsEmpty(totalValue) Or totalValue = "" Then totalValue = totalCell.Offset(0, 2).Value
-    If IsEmpty(totalValue) Or totalValue = "" Then totalValue = totalCell.Offset(1, 1).Value
-
-    ' Clean and format
+    '---------------------------------------------
+    ' 3?? ADD TOTAL PRICE (pull directly from F8)
+    '---------------------------------------------
+    totalValue = ws.Range("F8").value
     If Not IsEmpty(totalValue) And totalValue <> "" Then
-        If IsNumeric(totalValue) Then
-            totalValue = Format(CDbl(totalValue), "$#,##0.00")
-            yaml = yaml & "Total Price: """ & totalValue & """" & vbCrLf
-        End If
+        If IsNumeric(totalValue) Then totalValue = Format(CDbl(totalValue), "$#,##0.00")
+        yaml = yaml & "Total Price: """ & totalValue & """" & vbCrLf
     End If
-End If
-
-
-
-
-
 
     '---------------------------------------------
     ' 4?? ADD DEFAULT YAML FIELDS
@@ -115,14 +88,21 @@ End If
     If propName = "" Then propName = ws.Name
     If quoteNum = "" Then quoteNum = propName
 
-    yaml = yaml & "Date: """ & Format(Date, "yyyy-MM-dd") & """" & vbCrLf
     yaml = yaml & "Class: Quote" & vbCrLf
     yaml = yaml & "aliases: [""" & quoteNum & """]" & vbCrLf
     yaml = yaml & "tags: [work, estimates]" & vbCrLf
-    yaml = yaml & "---" & vbCrLf & vbCrLf
 
+    ' === NEW FOLLOW-UP YAML FIELDS ===
+    Dim nextDate As String
+    nextDate = Format(Date + 3, "yyyy-MM-dd")
+    yaml = yaml & "FollowUpStage: ""First""" & vbCrLf
+    yaml = yaml & "NextFollowUp: """ & nextDate & """" & vbCrLf
+    yaml = yaml & "NeedsFollowUp: false" & vbCrLf
+' =================================
+
+yaml = yaml & "---" & vbCrLf & vbCrLf
     '---------------------------------------------
-    ' 5?? MATERIAL TABLE (Filter by Total Sell Price)
+    ' 5?? MATERIAL TABLE (skip Notes)
     '---------------------------------------------
     tableText = ""
     On Error Resume Next
@@ -131,33 +111,40 @@ End If
 
     If Not tblMat Is Nothing Then
         tableText = tableText & "## Line Items" & vbCrLf & vbCrLf
+        Dim headerName As String
 
         'Header
         For j = 1 To tblMat.ListColumns.Count
-            tableText = tableText & "|" & tblMat.HeaderRowRange.Cells(1, j).Value
+            headerName = Trim(tblMat.HeaderRowRange.Cells(1, j).value)
+            If LCase(headerName) <> "notes" Then tableText = tableText & "|" & headerName
         Next j
         tableText = tableText & "|" & vbCrLf
+
         'Divider
-        For j = 1 To tblMat.ListColumns.Count: tableText = tableText & "|---": Next j
+        For j = 1 To tblMat.ListColumns.Count
+            headerName = Trim(tblMat.HeaderRowRange.Cells(1, j).value)
+            If LCase(headerName) <> "notes" Then tableText = tableText & "|---"
+        Next j
         tableText = tableText & "|" & vbCrLf
 
+        'Rows
         Dim totalColMat As Long
         totalColMat = 0
         On Error Resume Next
         totalColMat = tblMat.ListColumns("Total Sell Price").Index
         On Error GoTo 0
 
-        If totalColMat = 0 Then
-            MsgBox "'Total Sell Price' not found in " & tblMaterial, vbExclamation
-        Else
+        If totalColMat > 0 Then
             For i = 1 To tblMat.ListRows.Count
                 Dim cellVal As Variant
-                cellVal = Trim(tblMat.DataBodyRange.Cells(i, totalColMat).Value)
-
-                If cellVal <> "" And cellVal <> "-" And IsNumeric(Replace(cellVal, "$", "")) Then
+                cellVal = Trim(tblMat.DataBodyRange.Cells(i, totalColMat).value)
+                If cellVal <> "" And IsNumeric(Replace(cellVal, "$", "")) Then
                     If CDbl(Replace(cellVal, "$", "")) > 0 Then
                         For j = 1 To tblMat.ListColumns.Count
-                            tableText = tableText & "|" & Replace(tblMat.DataBodyRange.Cells(i, j).Text, "|", "\|")
+                            headerName = Trim(tblMat.HeaderRowRange.Cells(1, j).value)
+                            If LCase(headerName) <> "notes" Then
+                                tableText = tableText & "|" & Replace(tblMat.DataBodyRange.Cells(i, j).text, "|", "\|")
+                            End If
                         Next j
                         tableText = tableText & "|" & vbCrLf
                     End If
@@ -165,12 +152,10 @@ End If
             Next i
         End If
         tableText = tableText & vbCrLf
-    Else
-        tableText = tableText & "## Material Items" & vbCrLf & "_No material items listed._" & vbCrLf & vbCrLf
     End If
 
     '---------------------------------------------
-    ' 6?? LABOR / DEFICIENCY TABLE (No filter)
+    ' 6?? LABOR / DEFICIENCY TABLE
     '---------------------------------------------
     On Error Resume Next
     Set tblQuote = ws.ListObjects(tblLabor)
@@ -178,30 +163,24 @@ End If
 
     If Not tblQuote Is Nothing Then
         tableText = tableText & "## Totals" & vbCrLf & vbCrLf
-
-        'Header
         For j = 1 To tblQuote.ListColumns.Count
-            tableText = tableText & "|" & tblQuote.HeaderRowRange.Cells(1, j).Value
+            tableText = tableText & "|" & tblQuote.HeaderRowRange.Cells(1, j).value
         Next j
         tableText = tableText & "|" & vbCrLf
-        'Divider
         For j = 1 To tblQuote.ListColumns.Count: tableText = tableText & "|---": Next j
         tableText = tableText & "|" & vbCrLf
 
-        'All rows
         For i = 1 To tblQuote.ListRows.Count
             For j = 1 To tblQuote.ListColumns.Count
-                tableText = tableText & "|" & Replace(tblQuote.DataBodyRange.Cells(i, j).Text, "|", "\|")
+                tableText = tableText & "|" & Replace(tblQuote.DataBodyRange.Cells(i, j).text, "|", "\|")
             Next j
             tableText = tableText & "|" & vbCrLf
         Next i
         tableText = tableText & vbCrLf
-    Else
-        tableText = tableText & "## Labor / Deficiency Items" & vbCrLf & "_No labor/deficiency items listed._" & vbCrLf & vbCrLf
     End If
 
     '---------------------------------------------
-    ' 7?? APPEND "SCOPE OF WORK"
+    ' 7?? SCOPE OF WORK
     '---------------------------------------------
     noteText = ""
     Set foundCell = Nothing
@@ -217,9 +196,9 @@ End If
         For i = scopeStart To lastUsedRow
             rowText = ""
             For c = 1 To ws.Columns.Count
-                If Trim(ws.Cells(i, c).Value) <> "" Then
+                If Trim(ws.Cells(i, c).value) <> "" Then
                     If rowText <> "" Then rowText = rowText & " "
-                    rowText = rowText & Trim(ws.Cells(i, c).Value)
+                    rowText = rowText & Trim(ws.Cells(i, c).value)
                 End If
             Next c
 
@@ -231,7 +210,7 @@ End If
     End If
 
     '---------------------------------------------
-    ' 8?? BUILD FILE NAME
+    ' 8?? FILE NAME & SAVE
     '---------------------------------------------
     fileName = Trim(propName)
     If quoteNum <> "" Then fileName = fileName & " - " & Trim(quoteNum)
@@ -246,75 +225,66 @@ End If
     fileName = Replace(fileName, "|", "")
     mdFile = vaultPath & fileName & ".md"
 
-   '---------------------------------------------
-' 9?? WRITE OR UPDATE FILE (UTF-8)
-'---------------------------------------------
-Dim stream As Object
-Dim existingText As String
-Dim yamlStart As Long, yamlEnd As Long
-Dim preservedYaml As String
-Dim updatedYaml As String
-Dim fileContent As String
-Dim ts As Object
-Dim line As Variant
-Dim newLines As String
-Dim yamlLines() As String
+    '---------------------------------------------
+    ' 9?? WRITE OR UPDATE FILE (UTF-8)
+    '---------------------------------------------
+    Dim stream As Object, ts As Object
+    Dim existingText As String, yamlStart As Long, yamlEnd As Long
+    Dim preservedYaml As String, updatedYaml As String
+    Dim yamlLines() As String, line As Variant, newLines As String
+    Dim statusExists As Boolean
 
-If fso.FileExists(mdFile) Then
-    ' --- File already exists: preserve YAML, update body ---
-    Set ts = fso.OpenTextFile(mdFile, 1, False, -1)
-    existingText = ts.ReadAll
-    ts.Close
+    If fso.FileExists(mdFile) Then
+        ' --- File already exists: preserve YAML, do not overwrite Status ---
+        Set ts = fso.OpenTextFile(mdFile, 1, False, -1)
+        existingText = ts.ReadAll
+        ts.Close
 
-    yamlStart = InStr(existingText, "---")
-    If yamlStart > 0 Then
-        yamlEnd = InStr(yamlStart + 3, existingText, "---")
-        If yamlEnd > 0 Then
-            preservedYaml = Mid(existingText, yamlStart, yamlEnd - yamlStart + 3)
+        yamlStart = InStr(existingText, "---")
+        If yamlStart > 0 Then
+            yamlEnd = InStr(yamlStart + 3, existingText, "---")
+            If yamlEnd > 0 Then preservedYaml = Mid(existingText, yamlStart, yamlEnd - yamlStart + 3)
         End If
-    End If
 
-    ' --- If YAML found, selectively update key values ---
-    If preservedYaml <> "" Then
-        yamlLines = Split(preservedYaml, vbCrLf)
-        newLines = ""
+        If preservedYaml <> "" Then
+            yamlLines = Split(preservedYaml, vbCrLf)
+            newLines = ""
+            statusExists = False
 
-        For Each line In yamlLines
-            Select Case True
-                Case LCase(Left(line, 13)) = "hours quoted:"
-                    line = "Hours Quoted: """ & ws.Range("F4").Value & """"  ' adjust cell reference if needed
-                Case LCase(Left(line, 12)) = "labor total:"
-                    line = "Labor Total: """ & Format(ws.Range("F5").Value, "$#,##0.00") & """"
-                Case LCase(Left(line, 12)) = "total price:"
-                    ' optional: if you later get total price working
-                    line = "Total Price: """ & totalValue & """"
-            End Select
-            newLines = newLines & line & vbCrLf
-        Next line
+            For Each line In yamlLines
+                If LCase(Left(line, 7)) = "status:" Then statusExists = True
+                newLines = newLines & line & vbCrLf
+            Next line
 
-        updatedYaml = newLines
+            ' Rebuild YAML without adding Status if it already exists
+            If statusExists Then
+                updatedYaml = Replace(yaml, "Status: [Submitted]" & vbCrLf, "")
+            Else
+                updatedYaml = yaml
+            End If
+        Else
+            updatedYaml = yaml
+        End If
+
+        existingText = Replace(existingText, preservedYaml, updatedYaml)
+        fileText = updatedYaml & vbCrLf & vbCrLf & tableText & noteText
     Else
-        updatedYaml = yaml
+        ' --- First-time creation ---
+        fileText = yaml & tableText & noteText
     End If
 
-    ' --- Build new file content ---
-    fileContent = updatedYaml & vbCrLf & vbCrLf & tableText & noteText
-Else
-    ' --- File does not exist: create new ---
-    fileContent = yaml & tableText & noteText
-End If
+    ' Save UTF-8
+    Set stream = CreateObject("ADODB.Stream")
+    With stream
+        .Type = 2
+        .Charset = "utf-8"
+        .Open
+        .WriteText fileText
+        .SaveToFile mdFile, 2
+        .Close
+    End With
 
-' --- Save to disk ---
-Set stream = CreateObject("ADODB.Stream")
-With stream
-    .Type = 2
-    .Charset = "utf-8"
-    .Open
-    .WriteText fileContent
-    .SaveToFile mdFile, 2
-    .Close
-End With
-
-MsgBox "Markdown file " & IIf(fso.FileExists(mdFile), "updated", "created") & ":" & vbCrLf & mdFile, vbInformation, "Export Complete"
-
+    MsgBox "Markdown file " & IIf(fso.FileExists(mdFile), "updated", "created") & ":" & vbCrLf & mdFile, vbInformation, "Export Complete"
 End Sub
+
+
