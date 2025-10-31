@@ -16,9 +16,10 @@ Sub ExportToMarkdown()
     Dim totalValue As Variant
 
     '=== CONFIGURATION ===
-    vaultPath = "C:\Users\CraigMoravec\Obsidian Sync Cloud\001-Work\PZ-Quote Tracker\"  'change if needed
+    vaultPath = "C:\Users\CraigMoravec\Obsidian Sync Cloud\001-Work\PZ-Quote Tracker\"  ' << Confirmed path
     Const tblMaterial As String = "tblMatLines"
     Const tblLabor As String = "tblQuoteLines"
+    Const FOLLOWUP_MARKER As String = "<!-- FOLLOWUP-BLOCK -->"
     '======================
 
     Set ws = ActiveWorkbook.ActiveSheet
@@ -26,7 +27,7 @@ Sub ExportToMarkdown()
     If Not fso.FolderExists(vaultPath) Then fso.CreateFolder vaultPath
 
     '---------------------------------------------
-    ' 1?? YAML HEADER (Left Section)
+    ' 1) YAML HEADER (Left Section)
     '---------------------------------------------
     yaml = "---" & vbCrLf
     yaml = yaml & "Date: """ & Format(Date, "yyyy-MM-dd") & """" & vbCrLf
@@ -40,7 +41,7 @@ Sub ExportToMarkdown()
             ' Skip unwanted fields
             If LCase(key) <> "column1" And LCase(key) <> "column2" _
                 And LCase(key) <> "notes" And LCase(key) <> "today's date" Then
-                val = """" & Replace(val, """", "'") & """"
+                val = """" & Replace(val, """", "'") & """"   ' escape double quotes
                 yaml = yaml & key & ": " & val & vbCrLf
                 If LCase(key) Like "*property*" Then propName = Replace(ws.Cells(i, 2).value, ":", "")
                 If LCase(key) Like "*quote*" Then quoteNum = Replace(ws.Cells(i, 2).value, ":", "")
@@ -49,7 +50,7 @@ Sub ExportToMarkdown()
     Next i
 
     '---------------------------------------------
-    ' 2?? ADD RIGHT PANEL (D2:D5 ? F2:F5)
+    ' 2) ADD RIGHT PANEL (D2:D5 & F2:F5)
     '---------------------------------------------
     Dim rightKeys As Variant, rightVals As Variant
     rightKeys = ws.Range("D2:D5").value
@@ -74,16 +75,16 @@ Sub ExportToMarkdown()
     Next i
 
     '---------------------------------------------
-    ' 3?? ADD TOTAL PRICE (pull directly from F8)
+    ' 3) ADD TOTAL PRICE (pull directly from F8)
     '---------------------------------------------
     totalValue = ws.Range("F8").value
     If Not IsEmpty(totalValue) And totalValue <> "" Then
-        If IsNumeric(totalValue) Then totalValue = Format(CDbl(totalValue), "$#,##0.00")
+        If IsNumeric(totalValue) Then totalValue = Format(CDbl(Replace(totalValue, "$", "")), "$#,##0.00")
         yaml = yaml & "Total Price: """ & totalValue & """" & vbCrLf
     End If
 
     '---------------------------------------------
-    ' 4?? ADD DEFAULT YAML FIELDS
+    ' 4) ADD DEFAULT YAML FIELDS + FOLLOW-UP YAML
     '---------------------------------------------
     If propName = "" Then propName = ws.Name
     If quoteNum = "" Then quoteNum = propName
@@ -92,17 +93,18 @@ Sub ExportToMarkdown()
     yaml = yaml & "aliases: [""" & quoteNum & """]" & vbCrLf
     yaml = yaml & "tags: [work, estimates]" & vbCrLf
 
-    ' === NEW FOLLOW-UP YAML FIELDS ===
+    ' === NEW FOLLOW-UP YAML FIELDS (defaults) ===
     Dim nextDate As String
     nextDate = Format(Date + 3, "yyyy-MM-dd")
     yaml = yaml & "FollowUpStage: ""First""" & vbCrLf
     yaml = yaml & "NextFollowUp: """ & nextDate & """" & vbCrLf
     yaml = yaml & "NeedsFollowUp: false" & vbCrLf
-' =================================
+    ' ============================================
 
-yaml = yaml & "---" & vbCrLf & vbCrLf
+    yaml = yaml & "---" & vbCrLf & vbCrLf
+
     '---------------------------------------------
-    ' 5?? MATERIAL TABLE (skip Notes)
+    ' 5) MATERIAL TABLE (skip Notes)
     '---------------------------------------------
     tableText = ""
     On Error Resume Next
@@ -111,9 +113,9 @@ yaml = yaml & "---" & vbCrLf & vbCrLf
 
     If Not tblMat Is Nothing Then
         tableText = tableText & "## Line Items" & vbCrLf & vbCrLf
-        Dim headerName As String
 
         'Header
+        Dim headerName As String
         For j = 1 To tblMat.ListColumns.Count
             headerName = Trim(tblMat.HeaderRowRange.Cells(1, j).value)
             If LCase(headerName) <> "notes" Then tableText = tableText & "|" & headerName
@@ -155,7 +157,7 @@ yaml = yaml & "---" & vbCrLf & vbCrLf
     End If
 
     '---------------------------------------------
-    ' 6?? LABOR / DEFICIENCY TABLE
+    ' 6) LABOR / DEFICIENCY TABLE
     '---------------------------------------------
     On Error Resume Next
     Set tblQuote = ws.ListObjects(tblLabor)
@@ -180,7 +182,7 @@ yaml = yaml & "---" & vbCrLf & vbCrLf
     End If
 
     '---------------------------------------------
-    ' 7?? SCOPE OF WORK
+    ' 7) SCOPE OF WORK
     '---------------------------------------------
     noteText = ""
     Set foundCell = Nothing
@@ -210,7 +212,51 @@ yaml = yaml & "---" & vbCrLf & vbCrLf
     End If
 
     '---------------------------------------------
-    ' 8?? FILE NAME & SAVE
+    ' 8) FOLLOW-UP BLOCK (Buttons plugin) to sit under YAML
+    '---------------------------------------------
+    Dim followUpBlock As String
+followUpBlock = FOLLOWUP_MARKER & vbCrLf
+followUpBlock = followUpBlock & "## Follow-Up" & vbCrLf
+followUpBlock = followUpBlock & "Click a button when you complete a follow-up." & vbCrLf & vbCrLf
+
+' Complete Follow-Up button
+followUpBlock = followUpBlock & "```button" & vbCrLf
+followUpBlock = followUpBlock & "name ? Complete Follow-Up" & vbCrLf
+followUpBlock = followUpBlock & "type command" & vbCrLf
+followUpBlock = followUpBlock & "action templater:run-user-script ""advance_followup""" & vbCrLf
+followUpBlock = followUpBlock & "```" & vbCrLf & vbCrLf
+
+' Mark Won
+followUpBlock = followUpBlock & "```button" & vbCrLf
+followUpBlock = followUpBlock & "name ?? Mark Won" & vbCrLf
+followUpBlock = followUpBlock & "type property" & vbCrLf
+followUpBlock = followUpBlock & "property Status" & vbCrLf
+followUpBlock = followUpBlock & "value ""Won""" & vbCrLf
+followUpBlock = followUpBlock & "```" & vbCrLf & vbCrLf
+
+' Mark Lost
+followUpBlock = followUpBlock & "```button" & vbCrLf
+followUpBlock = followUpBlock & "name ?? Mark Lost" & vbCrLf
+followUpBlock = followUpBlock & "type property" & vbCrLf
+followUpBlock = followUpBlock & "property Status" & vbCrLf
+followUpBlock = followUpBlock & "value ""Lost""" & vbCrLf
+followUpBlock = followUpBlock & "```" & vbCrLf & vbCrLf
+
+' Mark Rejected
+followUpBlock = followUpBlock & "```button" & vbCrLf
+followUpBlock = followUpBlock & "name ?? Mark Rejected" & vbCrLf
+followUpBlock = followUpBlock & "type property" & vbCrLf
+followUpBlock = followUpBlock & "property Status" & vbCrLf
+followUpBlock = followUpBlock & "value ""Rejected""" & vbCrLf
+followUpBlock = followUpBlock & "```" & vbCrLf & vbCrLf
+
+followUpBlock = followUpBlock & "<details>" & vbCrLf
+followUpBlock = followUpBlock & "<summary>History</summary>" & vbCrLf & vbCrLf
+followUpBlock = followUpBlock & "- Quote created: <% tp.file.creation_date(""YYYY-MM-DD"") %>" & vbCrLf & vbCrLf
+followUpBlock = followUpBlock & "</details>" & vbCrLf & vbCrLf
+
+    '---------------------------------------------
+    ' 9) FILE NAME & PATH
     '---------------------------------------------
     fileName = Trim(propName)
     If quoteNum <> "" Then fileName = fileName & " - " & Trim(quoteNum)
@@ -226,51 +272,75 @@ yaml = yaml & "---" & vbCrLf & vbCrLf
     mdFile = vaultPath & fileName & ".md"
 
     '---------------------------------------------
-    ' 9?? WRITE OR UPDATE FILE (UTF-8)
+    ' 10) WRITE OR UPDATE FILE (UTF-8) with YAML merge + block insert
     '---------------------------------------------
     Dim stream As Object, ts As Object
     Dim existingText As String, yamlStart As Long, yamlEnd As Long
     Dim preservedYaml As String, updatedYaml As String
-    Dim yamlLines() As String, line As Variant, newLines As String
     Dim statusExists As Boolean
+    Dim hasStage As Boolean, hasNext As Boolean, hasNeeds As Boolean
 
     If fso.FileExists(mdFile) Then
-        ' --- File already exists: preserve YAML, do not overwrite Status ---
+        ' --- Read existing and extract YAML ---
         Set ts = fso.OpenTextFile(mdFile, 1, False, -1)
         existingText = ts.ReadAll
         ts.Close
 
-        yamlStart = InStr(existingText, "---")
+        yamlStart = InStr(1, existingText, "---")
         If yamlStart > 0 Then
             yamlEnd = InStr(yamlStart + 3, existingText, "---")
             If yamlEnd > 0 Then preservedYaml = Mid(existingText, yamlStart, yamlEnd - yamlStart + 3)
         End If
 
+        ' --- Merge rules: if Status already present, remove default "Status: [Submitted]" from new yaml ---
         If preservedYaml <> "" Then
-            yamlLines = Split(preservedYaml, vbCrLf)
-            newLines = ""
-            statusExists = False
+            statusExists = (InStr(1, LCase(preservedYaml), "status:") > 0)
+            hasStage = (InStr(1, LCase(preservedYaml), "followupstage:") > 0)
+            hasNext = (InStr(1, LCase(preservedYaml), "nextfollowup:") > 0)
+            hasNeeds = (InStr(1, LCase(preservedYaml), "needsfollowup:") > 0)
 
-            For Each line In yamlLines
-                If LCase(Left(line, 7)) = "status:" Then statusExists = True
-                newLines = newLines & line & vbCrLf
-            Next line
-
-            ' Rebuild YAML without adding Status if it already exists
-            If statusExists Then
-                updatedYaml = Replace(yaml, "Status: [Submitted]" & vbCrLf, "")
-            Else
-                updatedYaml = yaml
-            End If
-        Else
             updatedYaml = yaml
+            If statusExists Then
+                updatedYaml = Replace(updatedYaml, "Status: [Submitted]" & vbCrLf, "")
+            End If
+            If hasStage Then
+                updatedYaml = ReplaceLineContains(updatedYaml, "FollowUpStage:", "")
+            End If
+            If hasNext Then
+                updatedYaml = ReplaceLineContains(updatedYaml, "NextFollowUp:", "")
+            End If
+            If hasNeeds Then
+                updatedYaml = ReplaceLineContains(updatedYaml, "NeedsFollowUp:", "")
+            End If
+
+            ' Replace old YAML with merged YAML
+            existingText = Replace(existingText, preservedYaml, updatedYaml)
+        Else
+            ' No YAML detected: prepend our YAML
+            existingText = yaml & existingText
         End If
 
-        existingText = Replace(existingText, preservedYaml, updatedYaml)
-        fileText = updatedYaml & vbCrLf & vbCrLf & tableText & noteText
+        ' --- Ensure Follow-Up block exists (preserve if already present) ---
+        If InStr(1, existingText, FOLLOWUP_MARKER) = 0 Then
+            ' insert block right after YAML
+            yamlStart = InStr(1, existingText, "---")
+            If yamlStart > 0 Then
+                yamlEnd = InStr(yamlStart + 3, existingText, "---")
+                If yamlEnd > 0 Then
+                    ' insert after closing ---
+                    existingText = Left(existingText, yamlEnd + 3) & vbCrLf & vbCrLf & followUpBlock & Mid(existingText, yamlEnd + 4)
+                Else
+                    existingText = yaml & followUpBlock & vbCrLf & existingText
+                End If
+            Else
+                existingText = yaml & followUpBlock & vbCrLf & existingText
+            End If
+        End If
+
+        fileText = existingText   ' preserve body to keep history
     Else
-        ' --- First-time creation ---
-        fileText = yaml & tableText & noteText
+        ' --- First-time creation: YAML + Follow-Up block + fresh tables + scope ---
+        fileText = yaml & followUpBlock & tableText & noteText
     End If
 
     ' Save UTF-8
@@ -286,5 +356,393 @@ yaml = yaml & "---" & vbCrLf & vbCrLf
 
     MsgBox "Markdown file " & IIf(fso.FileExists(mdFile), "updated", "created") & ":" & vbCrLf & mdFile, vbInformation, "Export Complete"
 End Sub
+
+' Helper: remove an entire line that contains a token (case-insensitive).
+Private Function ReplaceLineContains(ByVal block As String, ByVal token As String, ByVal replacement As String) As String
+    Dim arr() As String, out As String, ln As Variant
+    arr = Split(block, vbCrLf)
+    For Each ln In arr
+        If InStr(1, LCase(CStr(ln)), LCase(token)) = 0 Then
+            out = out & CStr(ln) & vbCrLf
+        ElseIf replacement <> "" Then
+            out = out & replacement & vbCrLf
+        End If
+    Next ln
+    ReplaceLineContains = out
+End Function
+
+
+Option Explicit
+
+Sub ExportToMarkdown()
+    Dim ws As Worksheet
+    Dim vaultPath As String
+    Dim fileText As String
+    Dim mdFile As String
+    Dim fso As Object
+    Dim yaml As String, noteText As String, tableText As String
+    Dim propName As String, key As String, val As String, quoteNum As String
+    Dim fileName As String
+    Dim tblMat As ListObject, tblQuote As ListObject
+    Dim i As Long, j As Long, c As Long
+    Dim rowText As String
+    Dim foundCell As Range, scopeStart As Long
+    Dim totalValue As Variant
+
+    '=== CONFIGURATION ===
+    vaultPath = "C:\Users\CraigMoravec\Obsidian Sync Cloud\001-Work\PZ-Quote Tracker\"  ' << Confirmed path
+    Const tblMaterial As String = "tblMatLines"
+    Const tblLabor As String = "tblQuoteLines"
+    Const FOLLOWUP_MARKER As String = "<!-- FOLLOWUP-BLOCK -->"
+    '======================
+
+    Set ws = ActiveWorkbook.ActiveSheet
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FolderExists(vaultPath) Then fso.CreateFolder vaultPath
+
+    '---------------------------------------------
+    ' 1) YAML HEADER (Left Section)
+    '---------------------------------------------
+    yaml = "---" & vbCrLf
+    yaml = yaml & "Date: """ & Format(Date, "yyyy-MM-dd") & """" & vbCrLf
+    yaml = yaml & "Status: [Submitted]" & vbCrLf
+
+    ' Loop only through rows 1–9 to skip Notes
+    For i = 1 To 9
+        key = Trim(Replace(ws.Cells(i, 1).value, ":", ""))
+        val = Trim(ws.Cells(i, 2).value)
+        If key <> "" And val <> "" Then
+            ' Skip unwanted fields
+            If LCase(key) <> "column1" And LCase(key) <> "column2" _
+                And LCase(key) <> "notes" And LCase(key) <> "today's date" Then
+                val = """" & Replace(val, """", "'") & """"   ' escape double quotes
+                yaml = yaml & key & ": " & val & vbCrLf
+                If LCase(key) Like "*property*" Then propName = Replace(ws.Cells(i, 2).value, ":", "")
+                If LCase(key) Like "*quote*" Then quoteNum = Replace(ws.Cells(i, 2).value, ":", "")
+            End If
+        End If
+    Next i
+
+    '---------------------------------------------
+    ' 2) ADD RIGHT PANEL (D2:D5 & F2:F5)
+    '---------------------------------------------
+    Dim rightKeys As Variant, rightVals As Variant
+    rightKeys = ws.Range("D2:D5").value
+    rightVals = ws.Range("F2:F5").value
+
+    For i = 1 To UBound(rightKeys, 1)
+        If Trim(rightKeys(i, 1)) <> "" And Trim(rightVals(i, 1)) <> "" Then
+            Dim k As String, v As String
+            k = Replace(Trim(rightKeys(i, 1)), ":", "")
+            v = Trim(rightVals(i, 1))
+
+            ' Skip Primary Contact and Email duplicates if already handled above
+            If LCase(k) <> "primary contact" And LCase(k) <> "email" Then
+                If LCase(k) Like "*hours*" Then
+                    If IsNumeric(v) Then v = CInt(v)
+                ElseIf IsNumeric(Replace(v, "$", "")) Then
+                    v = Format(CDbl(Replace(v, "$", "")), "$#,##0.00")
+                End If
+                yaml = yaml & k & ": """ & v & """" & vbCrLf
+            End If
+        End If
+    Next i
+
+    '---------------------------------------------
+    ' 3) ADD TOTAL PRICE (pull directly from F8)
+    '---------------------------------------------
+    totalValue = ws.Range("F8").value
+    If Not IsEmpty(totalValue) And totalValue <> "" Then
+        If IsNumeric(totalValue) Then totalValue = Format(CDbl(Replace(totalValue, "$", "")), "$#,##0.00")
+        yaml = yaml & "Total Price: """ & totalValue & """" & vbCrLf
+    End If
+
+    '---------------------------------------------
+    ' 4) ADD DEFAULT YAML FIELDS + FOLLOW-UP YAML
+    '---------------------------------------------
+    If propName = "" Then propName = ws.Name
+    If quoteNum = "" Then quoteNum = propName
+
+    yaml = yaml & "Class: Quote" & vbCrLf
+    yaml = yaml & "aliases: [""" & quoteNum & """]" & vbCrLf
+    yaml = yaml & "tags: [work, estimates]" & vbCrLf
+
+    ' === NEW FOLLOW-UP YAML FIELDS (defaults) ===
+    Dim nextDate As String
+    nextDate = Format(Date + 3, "yyyy-MM-dd")
+    yaml = yaml & "FollowUpStage: ""First""" & vbCrLf
+    yaml = yaml & "NextFollowUp: """ & nextDate & """" & vbCrLf
+    yaml = yaml & "NeedsFollowUp: false" & vbCrLf
+    ' ============================================
+
+    yaml = yaml & "---" & vbCrLf & vbCrLf
+
+    '---------------------------------------------
+    ' 5) MATERIAL TABLE (skip Notes)
+    '---------------------------------------------
+    tableText = ""
+    On Error Resume Next
+    Set tblMat = ws.ListObjects(tblMaterial)
+    On Error GoTo 0
+
+    If Not tblMat Is Nothing Then
+        tableText = tableText & "## Line Items" & vbCrLf & vbCrLf
+
+        'Header
+        Dim headerName As String
+        For j = 1 To tblMat.ListColumns.Count
+            headerName = Trim(tblMat.HeaderRowRange.Cells(1, j).value)
+            If LCase(headerName) <> "notes" Then tableText = tableText & "|" & headerName
+        Next j
+        tableText = tableText & "|" & vbCrLf
+
+        'Divider
+        For j = 1 To tblMat.ListColumns.Count
+            headerName = Trim(tblMat.HeaderRowRange.Cells(1, j).value)
+            If LCase(headerName) <> "notes" Then tableText = tableText & "|---"
+        Next j
+        tableText = tableText & "|" & vbCrLf
+
+        'Rows
+        Dim totalColMat As Long
+        totalColMat = 0
+        On Error Resume Next
+        totalColMat = tblMat.ListColumns("Total Sell Price").Index
+        On Error GoTo 0
+
+        If totalColMat > 0 Then
+            For i = 1 To tblMat.ListRows.Count
+                Dim cellVal As Variant
+                cellVal = Trim(tblMat.DataBodyRange.Cells(i, totalColMat).value)
+                If cellVal <> "" And IsNumeric(Replace(cellVal, "$", "")) Then
+                    If CDbl(Replace(cellVal, "$", "")) > 0 Then
+                        For j = 1 To tblMat.ListColumns.Count
+                            headerName = Trim(tblMat.HeaderRowRange.Cells(1, j).value)
+                            If LCase(headerName) <> "notes" Then
+                                tableText = tableText & "|" & Replace(tblMat.DataBodyRange.Cells(i, j).text, "|", "\|")
+                            End If
+                        Next j
+                        tableText = tableText & "|" & vbCrLf
+                    End If
+                End If
+            Next i
+        End If
+        tableText = tableText & vbCrLf
+    End If
+
+    '---------------------------------------------
+    ' 6) LABOR / DEFICIENCY TABLE
+    '---------------------------------------------
+    On Error Resume Next
+    Set tblQuote = ws.ListObjects(tblLabor)
+    On Error GoTo 0
+
+    If Not tblQuote Is Nothing Then
+        tableText = tableText & "## Totals" & vbCrLf & vbCrLf
+        For j = 1 To tblQuote.ListColumns.Count
+            tableText = tableText & "|" & tblQuote.HeaderRowRange.Cells(1, j).value
+        Next j
+        tableText = tableText & "|" & vbCrLf
+        For j = 1 To tblQuote.ListColumns.Count: tableText = tableText & "|---": Next j
+        tableText = tableText & "|" & vbCrLf
+
+        For i = 1 To tblQuote.ListRows.Count
+            For j = 1 To tblQuote.ListColumns.Count
+                tableText = tableText & "|" & Replace(tblQuote.DataBodyRange.Cells(i, j).text, "|", "\|")
+            Next j
+            tableText = tableText & "|" & vbCrLf
+        Next i
+        tableText = tableText & vbCrLf
+    End If
+
+    '---------------------------------------------
+    ' 7) SCOPE OF WORK
+    '---------------------------------------------
+    noteText = ""
+    Set foundCell = Nothing
+    On Error Resume Next
+    Set foundCell = ws.Cells.Find(What:="Scope of Work", LookIn:=xlValues, LookAt:=xlPart, MatchCase:=False)
+    On Error GoTo 0
+
+    If Not foundCell Is Nothing Then
+        scopeStart = foundCell.Row + 1
+        Dim lastUsedRow As Long
+        lastUsedRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+
+        For i = scopeStart To lastUsedRow
+            rowText = ""
+            For c = 1 To ws.Columns.Count
+                If Trim(ws.Cells(i, c).value) <> "" Then
+                    If rowText <> "" Then rowText = rowText & " "
+                    rowText = rowText & Trim(ws.Cells(i, c).value)
+                End If
+            Next c
+
+            If rowText <> "" Then
+                If noteText = "" Then noteText = "## Scope of Work" & vbCrLf & vbCrLf
+                noteText = noteText & rowText & vbCrLf
+            End If
+        Next i
+    End If
+
+    '---------------------------------------------
+    ' 8) FOLLOW-UP BLOCK (Buttons plugin) to sit under YAML
+    '---------------------------------------------
+    Dim followUpBlock As String
+followUpBlock = FOLLOWUP_MARKER & vbCrLf
+followUpBlock = followUpBlock & "## Follow-Up" & vbCrLf
+followUpBlock = followUpBlock & "Click a button when you complete a follow-up." & vbCrLf & vbCrLf
+
+' Complete Follow-Up button
+followUpBlock = followUpBlock & "```button" & vbCrLf
+followUpBlock = followUpBlock & "name ? Complete Follow-Up" & vbCrLf
+followUpBlock = followUpBlock & "type command" & vbCrLf
+followUpBlock = followUpBlock & "action templater:run-user-script ""advance_followup""" & vbCrLf
+followUpBlock = followUpBlock & "```" & vbCrLf & vbCrLf
+
+' Mark Won
+followUpBlock = followUpBlock & "```button" & vbCrLf
+followUpBlock = followUpBlock & "name ?? Mark Won" & vbCrLf
+followUpBlock = followUpBlock & "type property" & vbCrLf
+followUpBlock = followUpBlock & "property Status" & vbCrLf
+followUpBlock = followUpBlock & "value ""Won""" & vbCrLf
+followUpBlock = followUpBlock & "```" & vbCrLf & vbCrLf
+
+' Mark Lost
+followUpBlock = followUpBlock & "```button" & vbCrLf
+followUpBlock = followUpBlock & "name ?? Mark Lost" & vbCrLf
+followUpBlock = followUpBlock & "type property" & vbCrLf
+followUpBlock = followUpBlock & "property Status" & vbCrLf
+followUpBlock = followUpBlock & "value ""Lost""" & vbCrLf
+followUpBlock = followUpBlock & "```" & vbCrLf & vbCrLf
+
+' Mark Rejected
+followUpBlock = followUpBlock & "```button" & vbCrLf
+followUpBlock = followUpBlock & "name ?? Mark Rejected" & vbCrLf
+followUpBlock = followUpBlock & "type property" & vbCrLf
+followUpBlock = followUpBlock & "property Status" & vbCrLf
+followUpBlock = followUpBlock & "value ""Rejected""" & vbCrLf
+followUpBlock = followUpBlock & "```" & vbCrLf & vbCrLf
+
+followUpBlock = followUpBlock & "<details>" & vbCrLf
+followUpBlock = followUpBlock & "<summary>History</summary>" & vbCrLf & vbCrLf
+followUpBlock = followUpBlock & "- Quote created: <% tp.file.creation_date(""YYYY-MM-DD"") %>" & vbCrLf & vbCrLf
+followUpBlock = followUpBlock & "</details>" & vbCrLf & vbCrLf
+
+    '---------------------------------------------
+    ' 9) FILE NAME & PATH
+    '---------------------------------------------
+    fileName = Trim(propName)
+    If quoteNum <> "" Then fileName = fileName & " - " & Trim(quoteNum)
+    fileName = Replace(fileName, "/", "-")
+    fileName = Replace(fileName, "\", "-")
+    fileName = Replace(fileName, ":", "-")
+    fileName = Replace(fileName, "?", "")
+    fileName = Replace(fileName, "*", "")
+    fileName = Replace(fileName, """", "")
+    fileName = Replace(fileName, "<", "")
+    fileName = Replace(fileName, ">", "")
+    fileName = Replace(fileName, "|", "")
+    mdFile = vaultPath & fileName & ".md"
+
+    '---------------------------------------------
+    ' 10) WRITE OR UPDATE FILE (UTF-8) with YAML merge + block insert
+    '---------------------------------------------
+    Dim stream As Object, ts As Object
+    Dim existingText As String, yamlStart As Long, yamlEnd As Long
+    Dim preservedYaml As String, updatedYaml As String
+    Dim statusExists As Boolean
+    Dim hasStage As Boolean, hasNext As Boolean, hasNeeds As Boolean
+
+    If fso.FileExists(mdFile) Then
+        ' --- Read existing and extract YAML ---
+        Set ts = fso.OpenTextFile(mdFile, 1, False, -1)
+        existingText = ts.ReadAll
+        ts.Close
+
+        yamlStart = InStr(1, existingText, "---")
+        If yamlStart > 0 Then
+            yamlEnd = InStr(yamlStart + 3, existingText, "---")
+            If yamlEnd > 0 Then preservedYaml = Mid(existingText, yamlStart, yamlEnd - yamlStart + 3)
+        End If
+
+        ' --- Merge rules: if Status already present, remove default "Status: [Submitted]" from new yaml ---
+        If preservedYaml <> "" Then
+            statusExists = (InStr(1, LCase(preservedYaml), "status:") > 0)
+            hasStage = (InStr(1, LCase(preservedYaml), "followupstage:") > 0)
+            hasNext = (InStr(1, LCase(preservedYaml), "nextfollowup:") > 0)
+            hasNeeds = (InStr(1, LCase(preservedYaml), "needsfollowup:") > 0)
+
+            updatedYaml = yaml
+            If statusExists Then
+                updatedYaml = Replace(updatedYaml, "Status: [Submitted]" & vbCrLf, "")
+            End If
+            If hasStage Then
+                updatedYaml = ReplaceLineContains(updatedYaml, "FollowUpStage:", "")
+            End If
+            If hasNext Then
+                updatedYaml = ReplaceLineContains(updatedYaml, "NextFollowUp:", "")
+            End If
+            If hasNeeds Then
+                updatedYaml = ReplaceLineContains(updatedYaml, "NeedsFollowUp:", "")
+            End If
+
+            ' Replace old YAML with merged YAML
+            existingText = Replace(existingText, preservedYaml, updatedYaml)
+        Else
+            ' No YAML detected: prepend our YAML
+            existingText = yaml & existingText
+        End If
+
+        ' --- Ensure Follow-Up block exists (preserve if already present) ---
+        If InStr(1, existingText, FOLLOWUP_MARKER) = 0 Then
+            ' insert block right after YAML
+            yamlStart = InStr(1, existingText, "---")
+            If yamlStart > 0 Then
+                yamlEnd = InStr(yamlStart + 3, existingText, "---")
+                If yamlEnd > 0 Then
+                    ' insert after closing ---
+                    existingText = Left(existingText, yamlEnd + 3) & vbCrLf & vbCrLf & followUpBlock & Mid(existingText, yamlEnd + 4)
+                Else
+                    existingText = yaml & followUpBlock & vbCrLf & existingText
+                End If
+            Else
+                existingText = yaml & followUpBlock & vbCrLf & existingText
+            End If
+        End If
+
+        fileText = existingText   ' preserve body to keep history
+    Else
+        ' --- First-time creation: YAML + Follow-Up block + fresh tables + scope ---
+        fileText = yaml & followUpBlock & tableText & noteText
+    End If
+
+    ' Save UTF-8
+    Set stream = CreateObject("ADODB.Stream")
+    With stream
+        .Type = 2
+        .Charset = "utf-8"
+        .Open
+        .WriteText fileText
+        .SaveToFile mdFile, 2
+        .Close
+    End With
+
+    MsgBox "Markdown file " & IIf(fso.FileExists(mdFile), "updated", "created") & ":" & vbCrLf & mdFile, vbInformation, "Export Complete"
+End Sub
+
+' Helper: remove an entire line that contains a token (case-insensitive).
+Private Function ReplaceLineContains(ByVal block As String, ByVal token As String, ByVal replacement As String) As String
+    Dim arr() As String, out As String, ln As Variant
+    arr = Split(block, vbCrLf)
+    For Each ln In arr
+        If InStr(1, LCase(CStr(ln)), LCase(token)) = 0 Then
+            out = out & CStr(ln) & vbCrLf
+        ElseIf replacement <> "" Then
+            out = out & replacement & vbCrLf
+        End If
+    Next ln
+    ReplaceLineContains = out
+End Function
 
 
